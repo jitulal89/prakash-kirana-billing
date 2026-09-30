@@ -13,37 +13,68 @@ jobs:
     steps:
 
       # ============================================================
-      # 1. Download repository
+      # 1. Checkout repository
       # ============================================================
       - name: Download project
         uses: actions/checkout@v4
 
 
       # ============================================================
-      # 2. Extract ONLY the new VoiceFix ZIP
+      # 2. Extract ONLY VoiceFix ZIP
       # ============================================================
       - name: Extract Android project
         run: |
+          rm -rf project
           mkdir project
 
           echo "Available ZIP files:"
           ls -lh *.zip
 
-          echo "----------------------------------------"
-          echo "Extracting VoiceFix project..."
-          echo "----------------------------------------"
+          echo ""
+          echo "Extracting:"
+          echo "PrakashKiranaBilling_Android_Project_VoiceFix.zip"
 
           unzip -q "PrakashKiranaBilling_Android_Project_VoiceFix.zip" -d project
 
-          echo "----------------------------------------"
-          echo "Project extracted:"
-          echo "----------------------------------------"
-
-          find project -maxdepth 5 -type f | sort
+          echo ""
+          echo "Extracted files:"
+          find project -maxdepth 6 -type f | sort
 
 
       # ============================================================
-      # 3. Set up Java
+      # 3. Find Android project folder
+      # ============================================================
+      - name: Find Android project
+        run: |
+
+          echo "Searching for Android project..."
+
+          BUILD_FILE=$(find project \
+            -type f \
+            -path "*/app/build.gradle" \
+            | head -1)
+
+          if [ -z "$BUILD_FILE" ]; then
+            echo "ERROR: app/build.gradle was not found"
+            echo ""
+            echo "Files extracted:"
+            find project -maxdepth 8 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$(dirname "$BUILD_FILE")")
+
+          echo ""
+          echo "========================================"
+          echo "Android project found:"
+          echo "$PROJECT_DIR"
+          echo "========================================"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+
+      # ============================================================
+      # 4. Set up Java
       # ============================================================
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -53,7 +84,7 @@ jobs:
 
 
       # ============================================================
-      # 4. Fix Android project
+      # 5. Fix Android project
       # ============================================================
       - name: Fix Android project
         run: |
@@ -62,11 +93,18 @@ jobs:
           echo "Fixing Android project"
           echo "========================================"
 
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
+          echo ""
+          echo "Project files:"
+          find "$PROJECT_DIR" -maxdepth 5 -type f | sort
+
 
           # --------------------------------------------------------
           # Fix Gradle
           # --------------------------------------------------------
-          cat > project/app/build.gradle <<'EOF'
+          cat > "$PROJECT_DIR/app/build.gradle" <<'EOF'
           plugins {
               id 'com.android.application'
           }
@@ -89,7 +127,9 @@ jobs:
           # --------------------------------------------------------
           # Fix MainActivity
           # --------------------------------------------------------
-          cat > project/app/src/main/java/com/prakashkirana/billing/MainActivity.java <<'EOF'
+          mkdir -p "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing"
+
+          cat > "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/MainActivity.java" <<'EOF'
           package com.prakashkirana.billing;
 
           import android.Manifest;
@@ -164,7 +204,9 @@ jobs:
           # --------------------------------------------------------
           # Fix Android Manifest
           # --------------------------------------------------------
-          cat > project/app/src/main/AndroidManifest.xml <<'EOF'
+          mkdir -p "$PROJECT_DIR/app/src/main"
+
+          cat > "$PROJECT_DIR/app/src/main/AndroidManifest.xml" <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
               <uses-permission
@@ -194,10 +236,13 @@ jobs:
 
 
           # --------------------------------------------------------
-          # Fix AppCompat theme issue
+          # Fix AppCompat theme
           # --------------------------------------------------------
-          cat > project/app/src/main/res/values/styles.xml <<'EOF'
+          mkdir -p "$PROJECT_DIR/app/src/main/res/values"
+
+          cat > "$PROJECT_DIR/app/src/main/res/values/styles.xml" <<'EOF'
           <resources>
+
               <style name="AppTheme"
                      parent="@android:style/Theme.Material.Light.NoActionBar">
 
@@ -207,47 +252,47 @@ jobs:
                   <item name="android:statusBarColor">#24466F</item>
 
               </style>
+
           </resources>
           EOF
 
 
           # --------------------------------------------------------
-          # Verify VoiceFix web files
+          # Check VoiceFix web files
           # --------------------------------------------------------
           echo ""
           echo "========================================"
           echo "Checking Voice Billing files"
           echo "========================================"
 
-          if [ ! -f "project/app/src/main/assets/www/index.html" ]; then
+          if [ ! -f "$PROJECT_DIR/app/src/main/assets/www/index.html" ]; then
               echo "ERROR: index.html not found"
               exit 1
           fi
 
-          if [ ! -f "project/app/src/main/assets/www/app.js" ]; then
+          if [ ! -f "$PROJECT_DIR/app/src/main/assets/www/app.js" ]; then
               echo "ERROR: app.js not found"
               exit 1
           fi
 
-          echo "index.html found"
-          echo "app.js found"
+          echo "index.html FOUND"
+          echo "app.js FOUND"
 
           echo ""
-          echo "Web files:"
-          find project/app/src/main/assets/www \
+          echo "Voice Billing files:"
+          find "$PROJECT_DIR/app/src/main/assets/www" \
             -maxdepth 2 -type f | sort
 
           echo ""
-          echo "========================================"
-          echo "Android project fixed successfully"
-          echo "========================================"
+          echo "Android project fixed successfully."
 
 
       # ============================================================
-      # 5. Find Android SDK
+      # 6. Find Android SDK
       # ============================================================
       - name: Find Android SDK
         run: |
+
           echo "ANDROID_HOME=$ANDROID_HOME"
 
           find "$ANDROID_HOME" \
@@ -257,7 +302,7 @@ jobs:
 
 
       # ============================================================
-      # 6. Prepare Android SDK
+      # 7. Prepare Android SDK
       # ============================================================
       - name: Prepare Android SDK
         run: |
@@ -265,30 +310,20 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
           if [ ! -f "$SDKMANAGER" ]; then
-
-            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-              -name sdkmanager \
-              -type f | head -1)
-
+              SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+                -name sdkmanager \
+                -type f | head -1)
           fi
 
           if [ -z "$SDKMANAGER" ]; then
-
-            echo "ERROR: sdkmanager was not found"
-            exit 1
-
+              echo "ERROR: sdkmanager was not found"
+              exit 1
           fi
 
           echo "Using sdkmanager:"
           echo "$SDKMANAGER"
 
-          echo ""
-          echo "Accepting Android licenses..."
-
           yes | "$SDKMANAGER" --licenses || true
-
-          echo ""
-          echo "Installing Android SDK components..."
 
           "$SDKMANAGER" \
             "platform-tools" \
@@ -297,7 +332,7 @@ jobs:
 
 
       # ============================================================
-      # 7. Set up Gradle
+      # 8. Set up Gradle
       # ============================================================
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -306,10 +341,10 @@ jobs:
 
 
       # ============================================================
-      # 8. Build APK
+      # 9. Build APK
       # ============================================================
       - name: Build APK
-        working-directory: project
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
 
           echo "========================================"
@@ -322,35 +357,34 @@ jobs:
 
 
       # ============================================================
-      # 9. Check APK
+      # 10. Check APK
       # ============================================================
       - name: Check APK
         run: |
 
           echo "========================================"
-          echo "APK generated:"
+          echo "Checking generated APK"
           echo "========================================"
 
-          find project/app/build/outputs \
+          find "$PROJECT_DIR/app/build/outputs" \
             -type f \
             -name "*.apk" \
             -exec ls -lh {} \;
 
-          echo ""
-
-          if [ ! -f "project/app/build/outputs/apk/debug/app-debug.apk" ]; then
+          if [ ! -f "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" ]; then
               echo "ERROR: APK was not generated"
               exit 1
           fi
 
+          echo ""
           echo "APK successfully generated."
 
 
       # ============================================================
-      # 10. Upload APK
+      # 11. Upload APK
       # ============================================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Prakash-Kirana-Stores-APK
-          path: project/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
