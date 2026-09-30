@@ -12,27 +12,60 @@ jobs:
 
     steps:
 
+      # ============================================================
+      # 1. Download repository
+      # ============================================================
       - name: Download project
         uses: actions/checkout@v4
 
+
+      # ============================================================
+      # 2. Extract ONLY the new VoiceFix ZIP
+      # ============================================================
       - name: Extract Android project
         run: |
           mkdir project
-          unzip -q *.zip -d project
 
+          echo "Available ZIP files:"
+          ls -lh *.zip
+
+          echo "----------------------------------------"
+          echo "Extracting VoiceFix project..."
+          echo "----------------------------------------"
+
+          unzip -q "PrakashKiranaBilling_Android_Project_VoiceFix.zip" -d project
+
+          echo "----------------------------------------"
           echo "Project extracted:"
-          find project -maxdepth 3 -type f | sort
+          echo "----------------------------------------"
 
+          find project -maxdepth 5 -type f | sort
+
+
+      # ============================================================
+      # 3. Set up Java
+      # ============================================================
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
+
+      # ============================================================
+      # 4. Fix Android project
+      # ============================================================
       - name: Fix Android project
         run: |
 
+          echo "========================================"
+          echo "Fixing Android project"
+          echo "========================================"
+
+
+          # --------------------------------------------------------
           # Fix Gradle
+          # --------------------------------------------------------
           cat > project/app/build.gradle <<'EOF'
           plugins {
               id 'com.android.application'
@@ -52,7 +85,10 @@ jobs:
           }
           EOF
 
+
+          # --------------------------------------------------------
           # Fix MainActivity
+          # --------------------------------------------------------
           cat > project/app/src/main/java/com/prakashkirana/billing/MainActivity.java <<'EOF'
           package com.prakashkirana.billing;
 
@@ -124,7 +160,10 @@ jobs:
           }
           EOF
 
+
+          # --------------------------------------------------------
           # Fix Android Manifest
+          # --------------------------------------------------------
           cat > project/app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -153,66 +192,163 @@ jobs:
           </manifest>
           EOF
 
-          # FIX: Remove AppCompat theme
+
+          # --------------------------------------------------------
+          # Fix AppCompat theme issue
+          # --------------------------------------------------------
           cat > project/app/src/main/res/values/styles.xml <<'EOF'
           <resources>
               <style name="AppTheme"
                      parent="@android:style/Theme.Material.Light.NoActionBar">
+
                   <item name="android:fontFamily">sans</item>
                   <item name="android:colorAccent">#24466F</item>
                   <item name="android:navigationBarColor">#24466F</item>
                   <item name="android:statusBarColor">#24466F</item>
+
               </style>
           </resources>
           EOF
 
-          echo "Android project fixed successfully."
 
+          # --------------------------------------------------------
+          # Verify VoiceFix web files
+          # --------------------------------------------------------
+          echo ""
+          echo "========================================"
+          echo "Checking Voice Billing files"
+          echo "========================================"
+
+          if [ ! -f "project/app/src/main/assets/www/index.html" ]; then
+              echo "ERROR: index.html not found"
+              exit 1
+          fi
+
+          if [ ! -f "project/app/src/main/assets/www/app.js" ]; then
+              echo "ERROR: app.js not found"
+              exit 1
+          fi
+
+          echo "index.html found"
+          echo "app.js found"
+
+          echo ""
+          echo "Web files:"
+          find project/app/src/main/assets/www \
+            -maxdepth 2 -type f | sort
+
+          echo ""
+          echo "========================================"
+          echo "Android project fixed successfully"
+          echo "========================================"
+
+
+      # ============================================================
+      # 5. Find Android SDK
+      # ============================================================
       - name: Find Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null || true
 
+          find "$ANDROID_HOME" \
+            -name sdkmanager \
+            -type f \
+            2>/dev/null || true
+
+
+      # ============================================================
+      # 6. Prepare Android SDK
+      # ============================================================
       - name: Prepare Android SDK
         run: |
 
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
           if [ ! -f "$SDKMANAGER" ]; then
+
             SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-              -name sdkmanager -type f | head -1)
+              -name sdkmanager \
+              -type f | head -1)
+
           fi
 
           if [ -z "$SDKMANAGER" ]; then
+
             echo "ERROR: sdkmanager was not found"
             exit 1
+
           fi
 
-          echo "Using sdkmanager: $SDKMANAGER"
+          echo "Using sdkmanager:"
+          echo "$SDKMANAGER"
+
+          echo ""
+          echo "Accepting Android licenses..."
 
           yes | "$SDKMANAGER" --licenses || true
+
+          echo ""
+          echo "Installing Android SDK components..."
 
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
+
+      # ============================================================
+      # 7. Set up Gradle
+      # ============================================================
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10'
 
+
+      # ============================================================
+      # 8. Build APK
+      # ============================================================
       - name: Build APK
         working-directory: project
         run: |
-          echo "Building Prakash Kirana Stores APK..."
-          gradle assembleDebug --no-daemon --stacktrace
 
+          echo "========================================"
+          echo "Building Prakash Kirana Stores APK"
+          echo "========================================"
+
+          gradle assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+
+      # ============================================================
+      # 9. Check APK
+      # ============================================================
       - name: Check APK
         run: |
-          echo "APK generated:"
-          find project/app/build/outputs -type f -name "*.apk" -exec ls -lh {} \;
 
+          echo "========================================"
+          echo "APK generated:"
+          echo "========================================"
+
+          find project/app/build/outputs \
+            -type f \
+            -name "*.apk" \
+            -exec ls -lh {} \;
+
+          echo ""
+
+          if [ ! -f "project/app/build/outputs/apk/debug/app-debug.apk" ]; then
+              echo "ERROR: APK was not generated"
+              exit 1
+          fi
+
+          echo "APK successfully generated."
+
+
+      # ============================================================
+      # 10. Upload APK
+      # ============================================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
