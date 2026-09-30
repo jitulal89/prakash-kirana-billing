@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Download project
         uses: actions/checkout@v4
 
@@ -18,8 +19,132 @@ jobs:
         run: |
           mkdir project
           unzip -q *.zip -d project
-          echo "Project contents:"
-          find project -maxdepth 2 -type f | sort
+
+          echo "Extracted project:"
+          find project -maxdepth 3 -type f | sort
+
+      - name: Fix Android project
+        run: |
+
+          cat > project/app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.prakashkirana.billing'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.prakashkirana.billing'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
+
+          cat > project/app/src/main/java/com/prakashkirana/billing/MainActivity.java <<'EOF'
+          package com.prakashkirana.billing;
+
+          import android.Manifest;
+          import android.app.Activity;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
+          import android.webkit.PermissionRequest;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+
+          public class MainActivity extends Activity {
+
+              private WebView webView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  webView = new WebView(this);
+                  setContentView(webView);
+
+                  if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                          checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                                  != PackageManager.PERMISSION_GRANTED) {
+
+                      requestPermissions(
+                              new String[]{Manifest.permission.RECORD_AUDIO},
+                              1001
+                      );
+                  }
+
+                  WebSettings settings = webView.getSettings();
+
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setDatabaseEnabled(true);
+                  settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
+                  settings.setMediaPlaybackRequiresUserGesture(false);
+
+                  webView.setWebChromeClient(new WebChromeClient() {
+
+                      @Override
+                      public void onPermissionRequest(
+                              final PermissionRequest request) {
+
+                          runOnUiThread(() ->
+                                  request.grant(request.getResources())
+                          );
+                      }
+                  });
+
+                  webView.loadUrl(
+                          "file:///android_asset/www/index.html"
+                  );
+              }
+
+              @Override
+              public void onBackPressed() {
+
+                  if (webView.canGoBack()) {
+                      webView.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+          }
+          EOF
+
+          cat > project/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission
+                  android:name="android.permission.RECORD_AUDIO"/>
+
+              <application
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:label="Prakash Kirana Stores"
+                  android:icon="@drawable/ic_launcher">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="portrait"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
+          </manifest>
+          EOF
+
+          echo "Android project fixed."
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -30,15 +155,16 @@ jobs:
       - name: Find Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null || true
 
       - name: Prepare Android SDK
         run: |
+
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
           if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -1)
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+              -name sdkmanager -type f | head -1)
           fi
 
           if [ -z "$SDKMANAGER" ]; then
@@ -63,12 +189,12 @@ jobs:
       - name: Build APK
         working-directory: project
         run: |
-          echo "Starting APK build..."
+          echo "Building Prakash Kirana Stores APK..."
           gradle assembleDebug --no-daemon --stacktrace
 
       - name: Check APK
         run: |
-          echo "APK files:"
+          echo "APK generated:"
           find project/app/build/outputs -type f -name "*.apk" -exec ls -lh {} \;
 
       - name: Upload APK
