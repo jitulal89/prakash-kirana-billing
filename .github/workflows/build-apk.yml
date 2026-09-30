@@ -20,12 +20,19 @@ jobs:
           mkdir project
           unzip -q *.zip -d project
 
-          echo "Extracted project:"
+          echo "Project extracted:"
           find project -maxdepth 3 -type f | sort
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Fix Android project
         run: |
 
+          # Fix Gradle
           cat > project/app/build.gradle <<'EOF'
           plugins {
               id 'com.android.application'
@@ -45,6 +52,7 @@ jobs:
           }
           EOF
 
+          # Fix MainActivity
           cat > project/app/src/main/java/com/prakashkirana/billing/MainActivity.java <<'EOF'
           package com.prakashkirana.billing;
 
@@ -116,6 +124,7 @@ jobs:
           }
           EOF
 
+          # Fix Android Manifest
           cat > project/app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -144,13 +153,20 @@ jobs:
           </manifest>
           EOF
 
-          echo "Android project fixed."
+          # FIX: Remove AppCompat theme
+          cat > project/app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme"
+                     parent="@android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:colorAccent">#24466F</item>
+                  <item name="android:navigationBarColor">#24466F</item>
+                  <item name="android:statusBarColor">#24466F</item>
+              </style>
+          </resources>
+          EOF
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
+          echo "Android project fixed successfully."
 
       - name: Find Android SDK
         run: |
