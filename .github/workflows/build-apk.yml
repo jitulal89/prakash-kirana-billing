@@ -18,7 +18,7 @@ jobs:
       # ---------------------------------------------------------
       - name: Verify v3.1 ZIP
         run: |
-          ZIP_FILE="PrakashKiranaBilling_Android_v3_1_LocalFirst_LogoOCRFix.zip"
+          ZIP_FILE="PrakashKiranaBilling.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: $ZIP_FILE not found"
@@ -40,7 +40,7 @@ jobs:
           mkdir project
 
           unzip -q \
-            "PrakashKiranaBilling_Android_v3_1_LocalFirst_LogoOCRFix.zip" \
+            "PrakashKiranaBilling.zip" \
             -d project
 
           echo "Project extracted."
