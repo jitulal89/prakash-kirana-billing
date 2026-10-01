@@ -34,7 +34,7 @@ jobs:
           echo "Extracting:"
           echo "PrakashKiranaBilling_Android_Project_VoiceFix.zip"
 
-          unzip -q "PrakashKiranaBilling_V4.zip" -d project
+          unzip -q "PrakashKiranaBilling_V5.zip" -d project
 
           echo ""
           echo "Extracted files:"
