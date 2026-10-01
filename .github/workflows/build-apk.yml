@@ -12,45 +12,47 @@ jobs:
 
     steps:
 
-      # 1. Checkout GitHub repository
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Extract v1.6 project
+      # 2. Extract v1.8 Android project
       - name: Extract Android project
         run: |
           rm -rf project
           mkdir project
 
-          unzip -q "PrakashKiranaBilling_V8.zip" -d project
+          unzip -q "PrakashKiranaBilling_V9.zip" -d project
 
-          echo "Extracted project:"
-          find project -maxdepth 5 -type f | sort
+          echo "Project extracted:"
+          find project -maxdepth 6 -type f | sort
 
-      # 3. Find Android project
+      # 3. Locate Android project
       - name: Locate Android project
         run: |
           PROJECT_DIR=$(find project \
             -type f \
             -path "*/app/build.gradle" \
-            -print -quit | xargs -r dirname | xargs -r dirname)
+            -print -quit | \
+            xargs -r dirname | \
+            xargs -r dirname)
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android project not found."
-            find project -maxdepth 7 -type f | sort
+            find project -maxdepth 8 -type f | sort
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Android project:"
+          echo "Android project located at:"
           echo "$PROJECT_DIR"
 
-      # 4. Fix Android configuration
+      # 4. Fix Android build configuration
       - name: Fix Android project
         run: |
 
-          echo "Fixing Gradle configuration..."
+          echo "Updating build.gradle..."
 
           cat > "$PROJECT_DIR/app/build.gradle" <<'EOF'
           plugins {
@@ -65,13 +67,13 @@ jobs:
                   applicationId 'com.prakashkirana.billing'
                   minSdk 23
                   targetSdk 35
-                  versionCode 6
-                  versionName '1.6'
+                  versionCode 8
+                  versionName '1.8'
               }
           }
           EOF
 
-          echo "Fixing Android Manifest..."
+          echo "Updating AndroidManifest.xml..."
 
           cat > "$PROJECT_DIR/app/src/main/AndroidManifest.xml" <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -84,6 +86,12 @@ jobs:
                   android:icon="@drawable/ic_launcher"
                   android:allowBackup="true"
                   android:supportsRtl="true">
+
+                  <provider
+                      android:name=".ShareFileProvider"
+                      android:authorities="com.prakashkirana.billing.files"
+                      android:exported="false"
+                      android:grantUriPermissions="true" />
 
                   <activity
                       android:name=".MainActivity"
@@ -102,11 +110,12 @@ jobs:
           </manifest>
           EOF
 
-          echo "Removing old AppCompat theme resources..."
+          echo "Removing old AppCompat resources..."
 
           rm -f "$PROJECT_DIR/app/src/main/res/values/styles.xml"
           rm -f "$PROJECT_DIR/app/src/main/res/values/themes.xml"
           rm -f "$PROJECT_DIR/app/src/main/res/values/colors.xml"
+
           rm -f "$PROJECT_DIR/app/src/main/res/values-night/styles.xml"
           rm -f "$PROJECT_DIR/app/src/main/res/values-night/themes.xml"
           rm -f "$PROJECT_DIR/app/src/main/res/values-night/colors.xml"
@@ -132,31 +141,33 @@ jobs:
           </resources>
           EOF
 
-          echo "Checking for remaining AppCompat references..."
+          echo "Checking for AppCompat references..."
 
           if grep -R "Theme.AppCompat" \
-            "$PROJECT_DIR/app/src/main/res" \
-            "$PROJECT_DIR/app/src/main/AndroidManifest.xml" \
+            "$PROJECT_DIR/app/src/main" \
             2>/dev/null; then
 
-              echo "ERROR: AppCompat reference still exists."
+              echo "ERROR: AppCompat reference found."
               exit 1
 
           fi
 
-          echo "Android project fixed successfully."
+          echo "Android configuration fixed."
 
-      # 5. Check required files
-      - name: Check project files
+      # 5. Verify required files
+      - name: Verify project
         run: |
+
+          echo "Checking required files..."
 
           test -f "$PROJECT_DIR/app/build.gradle"
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
           test -f "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/MainActivity.java"
+          test -f "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/ShareFileProvider.java"
           test -f "$PROJECT_DIR/app/src/main/assets/www/index.html"
           test -f "$PROJECT_DIR/app/src/main/assets/www/app.js"
 
-          echo "All required files found."
+          echo "All required files are present."
 
       # 6. Setup Java
       - name: Set up Java
@@ -172,9 +183,10 @@ jobs:
 
           find "$ANDROID_HOME" \
             -name sdkmanager \
-            -type f 2>/dev/null || true
+            -type f \
+            2>/dev/null || true
 
-      # 8. Prepare Android SDK
+      # 8. Install Android SDK
       - name: Prepare Android SDK
         run: |
 
@@ -212,17 +224,22 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
 
-          echo "Building Prakash Kirana Stores APK..."
+          echo "======================================"
+          echo "Building Prakash Kirana Stores APK"
+          echo "Version 1.8"
+          echo "======================================"
 
           gradle assembleDebug \
             --no-daemon \
             --stacktrace
 
-      # 11. Check APK
+      # 11. Verify APK
       - name: Check APK
         run: |
 
+          echo "======================================"
           echo "APK generated:"
+          echo "======================================"
 
           find "$PROJECT_DIR/app/build/outputs" \
             -type f \
@@ -233,6 +250,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Prakash-Kirana-Stores-APK-v1.6
+          name: Prakash-Kirana-Stores-APK-v1.8
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
