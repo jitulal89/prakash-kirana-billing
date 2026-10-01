@@ -16,16 +16,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Extract v1.8 Android project
+      # 2. Extract v2.2 Android project
       - name: Extract Android project
         run: |
           rm -rf project
           mkdir project
 
-          unzip -q "PrakashKiranaBilling_v2_1.zip" -d project
+          unzip -q "PrakashKiranaBilling_Android_v2_2_Purchasing_VendorAccounts_OCR.zip" -d project
 
           echo "Project extracted:"
-          find project -maxdepth 6 -type f | sort
+          find project -maxdepth 8 -type f | sort
 
       # 3. Locate Android project
       - name: Locate Android project
@@ -39,7 +39,7 @@ jobs:
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android project not found."
-            find project -maxdepth 8 -type f | sort
+            find project -maxdepth 10 -type f | sort
             exit 1
           fi
 
@@ -67,8 +67,8 @@ jobs:
                   applicationId 'com.prakashkirana.billing'
                   minSdk 23
                   targetSdk 35
-                  versionCode 8
-                  versionName '1.8'
+                  versionCode 22
+                  versionName '2.2'
               }
           }
           EOF
@@ -186,7 +186,7 @@ jobs:
             -type f \
             2>/dev/null || true
 
-      # 8. Install Android SDK
+      # 8. Prepare Android SDK
       - name: Prepare Android SDK
         run: |
 
@@ -226,14 +226,14 @@ jobs:
 
           echo "======================================"
           echo "Building Prakash Kirana Stores APK"
-          echo "Version 1.8"
+          echo "Version 2.2"
           echo "======================================"
 
           gradle assembleDebug \
             --no-daemon \
             --stacktrace
 
-      # 11. Verify APK
+      # 11. Check APK
       - name: Check APK
         run: |
 
@@ -250,6 +250,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Prakash-Kirana-Stores-APK-v1.8
+          name: Prakash-Kirana-Stores-APK-v2.2
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
