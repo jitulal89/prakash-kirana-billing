@@ -1,60 +1,58 @@
-name: Build Prakash Kirana APK
+name: Build Prakash Kirana Stores APK v2.2
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-
-      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Extract v2.2 Android project
+      - name: Find ZIP file
+        id: zipfile
+        run: |
+          ZIP_FILE="PrakashKiranaBilling_V3.0.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: $ZIP_FILE not found"
+            echo "Available ZIP files:"
+            ls -lah *.zip || true
+            exit 1
+          fi
+
+          echo "zip=$ZIP_FILE" >> $GITHUB_OUTPUT
+
       - name: Extract Android project
         run: |
           rm -rf project
           mkdir project
 
-          unzip -q "PrakashKiranaBilling_V3.0.zip" -d project
+          unzip -q "${{ steps.zipfile.outputs.zip }}" -d project
 
-          echo "Project extracted:"
-          find project -maxdepth 8 -type f | sort
+          echo "Extracted files:"
+          find project -maxdepth 4 -type f | head -100
 
-      # 3. Locate Android project
       - name: Locate Android project
+        id: project
         run: |
-          PROJECT_DIR=$(find project \
-            -type f \
-            -path "*/app/build.gradle" \
-            -print -quit | \
-            xargs -r dirname | \
-            xargs -r dirname)
+          PROJECT_DIR=$(find project -type f -name "build.gradle" -path "*/app/*" -print -quit | xargs dirname | xargs dirname)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android project not found."
-            find project -maxdepth 10 -type f | sort
+            echo "ERROR: Android project not found"
+            find project -type f | head -200
             exit 1
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $PROJECT_DIR"
+          echo "project_dir=$PROJECT_DIR" >> $GITHUB_OUTPUT
 
-          echo "Android project located at:"
-          echo "$PROJECT_DIR"
-
-      # 4. Fix Android build configuration
-      - name: Fix Android project
+      - name: Fix app Gradle configuration
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-
-          echo "Updating build.gradle..."
-
-          cat > "$PROJECT_DIR/app/build.gradle" <<'EOF'
+          cat > app/build.gradle <<'EOF'
           plugins {
               id 'com.android.application'
           }
@@ -68,30 +66,45 @@ jobs:
                   minSdk 23
                   targetSdk 35
                   versionCode 22
-                  versionName '2.2'
+                  versionName "2.2"
               }
+          }
+
+          dependencies {
+              implementation 'com.google.mlkit:text-recognition:16.0.1'
           }
           EOF
 
-          echo "Updating AndroidManifest.xml..."
+          echo "===== app/build.gradle ====="
+          cat app/build.gradle
 
-          cat > "$PROJECT_DIR/app/src/main/AndroidManifest.xml" <<'EOF'
+      - name: Verify ML Kit OCR dependency
+        working-directory: ${{ steps.project.outputs.project_dir }}
+        run: |
+          grep -q "com.google.mlkit:text-recognition:16.0.1" app/build.gradle
+
+          if [ $? -ne 0 ]; then
+            echo "ERROR: ML Kit OCR dependency missing"
+            exit 1
+          fi
+
+          echo "ML Kit OCR dependency verified."
+
+      - name: Fix Android Manifest
+        working-directory: ${{ steps.project.outputs.project_dir }}
+        run: |
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
               <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.INTERNET" />
 
               <application
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="Prakash Kirana Stores"
-                  android:icon="@drawable/ic_launcher"
                   android:allowBackup="true"
-                  android:supportsRtl="true">
-
-                  <provider
-                      android:name=".ShareFileProvider"
-                      android:authorities="com.prakashkirana.billing.files"
-                      android:exported="false"
-                      android:grantUriPermissions="true" />
+                  android:label="Prakash Kirana Stores"
+                  android:supportsRtl="true"
+                  android:theme="@style/AppTheme">
 
                   <activity
                       android:name=".MainActivity"
@@ -105,26 +118,23 @@ jobs:
 
                   </activity>
 
+                  <provider
+                      android:name=".ShareFileProvider"
+                      android:authorities="${applicationId}.fileprovider"
+                      android:exported="false"
+                      android:grantUriPermissions="true" />
+
               </application>
 
           </manifest>
           EOF
 
-          echo "Removing old AppCompat resources..."
+      - name: Fix Android theme
+        working-directory: ${{ steps.project.outputs.project_dir }}
+        run: |
+          mkdir -p app/src/main/res/values
 
-          rm -f "$PROJECT_DIR/app/src/main/res/values/styles.xml"
-          rm -f "$PROJECT_DIR/app/src/main/res/values/themes.xml"
-          rm -f "$PROJECT_DIR/app/src/main/res/values/colors.xml"
-
-          rm -f "$PROJECT_DIR/app/src/main/res/values-night/styles.xml"
-          rm -f "$PROJECT_DIR/app/src/main/res/values-night/themes.xml"
-          rm -f "$PROJECT_DIR/app/src/main/res/values-night/colors.xml"
-
-          mkdir -p "$PROJECT_DIR/app/src/main/res/values"
-
-          echo "Creating clean Android theme..."
-
-          cat > "$PROJECT_DIR/app/src/main/res/values/styles.xml" <<'EOF'
+          cat > app/src/main/res/values/styles.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
 
@@ -132,124 +142,93 @@ jobs:
                   parent="@android:style/Theme.Material.Light.NoActionBar">
 
                   <item name="android:fontFamily">sans</item>
-                  <item name="android:colorAccent">#24466F</item>
-                  <item name="android:statusBarColor">#24466F</item>
-                  <item name="android:navigationBarColor">#24466F</item>
+                  <item name="android:colorAccent">#1565C0</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+                  <item name="android:statusBarColor">#1565C0</item>
+                  <item name="android:windowLightStatusBar">false</item>
 
               </style>
 
           </resources>
           EOF
 
-          echo "Checking for AppCompat references..."
-
-          if grep -R "Theme.AppCompat" \
-            "$PROJECT_DIR/app/src/main" \
-            2>/dev/null; then
-
-              echo "ERROR: AppCompat reference found."
-              exit 1
-
+      - name: Verify OCR Java source
+        working-directory: ${{ steps.project.outputs.project_dir }}
+        run: |
+          if [ ! -f app/src/main/java/com/prakashkirana/billing/MainActivity.java ]; then
+            echo "Searching for MainActivity.java..."
+            find app/src/main/java -name "MainActivity.java" -print
           fi
 
-          echo "Android configuration fixed."
+          echo "Checking ML Kit imports:"
+          grep -R "com.google.mlkit" app/src/main/java || true
 
-      # 5. Verify required files
-      - name: Verify project
-        run: |
-
-          echo "Checking required files..."
-
-          test -f "$PROJECT_DIR/app/build.gradle"
-          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
-          test -f "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/MainActivity.java"
-          test -f "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/ShareFileProvider.java"
-          test -f "$PROJECT_DIR/app/src/main/assets/www/index.html"
-          test -f "$PROJECT_DIR/app/src/main/assets/www/app.js"
-
-          echo "All required files are present."
-
-      # 6. Setup Java
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 7. Find Android SDK
-      - name: Find Android SDK
+      - name: Setup Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-
-          find "$ANDROID_HOME" \
-            -name sdkmanager \
-            -type f \
-            2>/dev/null || true
-
-      # 8. Prepare Android SDK
-      - name: Prepare Android SDK
-        run: |
-
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
           if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-              -name sdkmanager \
-              -type f | head -1)
+            echo "Finding sdkmanager..."
+            SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f | head -1)
           fi
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager not found."
+            echo "ERROR: sdkmanager not found"
+            find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null || true
             exit 1
           fi
 
-          echo "Using sdkmanager:"
-          echo "$SDKMANAGER"
+          echo "Using sdkmanager: $SDKMANAGER"
 
-          yes | "$SDKMANAGER" --licenses || true
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
 
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # 9. Setup Gradle
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10'
 
-      # 10. Build APK
-      - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Build Debug APK
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
+          chmod +x gradlew 2>/dev/null || true
 
-          echo "======================================"
-          echo "Building Prakash Kirana Stores APK"
-          echo "Version 2.2"
-          echo "======================================"
+          if [ -f "./gradlew" ]; then
+            ./gradlew clean assembleDebug --stacktrace
+          else
+            gradle clean assembleDebug --stacktrace
+          fi
 
-          gradle assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-      # 11. Check APK
-      - name: Check APK
+      - name: Verify APK
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
+          echo "APK files:"
+          find app/build/outputs/apk -type f -name "*.apk" -print
 
-          echo "======================================"
-          echo "APK generated:"
-          echo "======================================"
+          APK=$(find app/build/outputs/apk -type f -name "*.apk" | head -1)
 
-          find "$PROJECT_DIR/app/build/outputs" \
-            -type f \
-            -name "*.apk" \
-            -exec ls -lh {} \;
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not generated"
+            exit 1
+          fi
 
-      # 12. Upload APK
+          echo "APK generated successfully:"
+          ls -lh "$APK"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Prakash-Kirana-Stores-APK-v2.2
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            project/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
