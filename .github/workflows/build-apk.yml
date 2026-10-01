@@ -12,316 +12,81 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # 1. Checkout repository
-      # ============================================================
-      - name: Download project
+      # 1. Download files from GitHub
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # ============================================================
-      # 2. Extract ONLY VoiceFix ZIP
-      # ============================================================
+      # 2. Extract the v1.6 Android project
       - name: Extract Android project
         run: |
           rm -rf project
           mkdir project
 
-          echo "Available ZIP files:"
-          ls -lh *.zip
+          unzip -q "PrakashKiranaBilling_Android_v1_6_NoBlank_Final.zip" -d project
 
-          echo ""
-          echo "Extracting:"
-          echo "PrakashKiranaBilling_Android_Project_VoiceFix.zip"
-
-          unzip -q "PrakashKiranaBilling_V5.zip" -d project
-
-          echo ""
           echo "Extracted files:"
-          find project -maxdepth 6 -type f | sort
+          find project -maxdepth 5 -type f | sort
 
-
-      # ============================================================
-      # 3. Find Android project folder
-      # ============================================================
-      - name: Find Android project
+      # 3. Find actual Android project folder
+      - name: Locate Android project
         run: |
+          PROJECT_DIR=$(find project -type f -path "*/app/build.gradle" -print -quit | xargs -r dirname | xargs -r dirname)
 
-          echo "Searching for Android project..."
-
-          BUILD_FILE=$(find project \
-            -type f \
-            -path "*/app/build.gradle" \
-            | head -1)
-
-          if [ -z "$BUILD_FILE" ]; then
-            echo "ERROR: app/build.gradle was not found"
-            echo ""
-            echo "Files extracted:"
-            find project -maxdepth 8 -type f | sort
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android project was not found."
+            find project -maxdepth 6 -type f | sort
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$(dirname "$BUILD_FILE")")
-
-          echo ""
-          echo "========================================"
-          echo "Android project found:"
-          echo "$PROJECT_DIR"
-          echo "========================================"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $PROJECT_DIR"
 
+      # 4. Check important files
+      - name: Check project
+        run: |
+          echo "Checking Android project..."
 
-      # ============================================================
-      # 4. Set up Java
-      # ============================================================
+          test -f "$PROJECT_DIR/app/build.gradle"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/MainActivity.java"
+          test -f "$PROJECT_DIR/app/src/main/assets/www/index.html"
+          test -f "$PROJECT_DIR/app/src/main/assets/www/app.js"
+
+          echo "All required files found."
+
+      # 5. Setup Java
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-
-      # ============================================================
-      # 5. Fix Android project
-      # ============================================================
-      - name: Fix Android project
-        run: |
-
-          echo "========================================"
-          echo "Fixing Android project"
-          echo "========================================"
-
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
-
-          echo ""
-          echo "Project files:"
-          find "$PROJECT_DIR" -maxdepth 5 -type f | sort
-
-
-          # --------------------------------------------------------
-          # Fix Gradle
-          # --------------------------------------------------------
-          cat > "$PROJECT_DIR/app/build.gradle" <<'EOF'
-          plugins {
-              id 'com.android.application'
-          }
-
-          android {
-              namespace 'com.prakashkirana.billing'
-              compileSdk 35
-
-              defaultConfig {
-                  applicationId 'com.prakashkirana.billing'
-                  minSdk 23
-                  targetSdk 35
-                  versionCode 1
-                  versionName '1.0'
-              }
-          }
-          EOF
-
-
-          # --------------------------------------------------------
-          # Fix MainActivity
-          # --------------------------------------------------------
-          mkdir -p "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing"
-
-          cat > "$PROJECT_DIR/app/src/main/java/com/prakashkirana/billing/MainActivity.java" <<'EOF'
-          package com.prakashkirana.billing;
-
-          import android.Manifest;
-          import android.app.Activity;
-          import android.content.pm.PackageManager;
-          import android.os.Bundle;
-          import android.webkit.PermissionRequest;
-          import android.webkit.WebChromeClient;
-          import android.webkit.WebSettings;
-          import android.webkit.WebView;
-
-          public class MainActivity extends Activity {
-
-              private WebView webView;
-
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-
-                  webView = new WebView(this);
-                  setContentView(webView);
-
-                  if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                          checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                                  != PackageManager.PERMISSION_GRANTED) {
-
-                      requestPermissions(
-                              new String[]{Manifest.permission.RECORD_AUDIO},
-                              1001
-                      );
-                  }
-
-                  WebSettings settings = webView.getSettings();
-
-                  settings.setJavaScriptEnabled(true);
-                  settings.setDomStorageEnabled(true);
-                  settings.setDatabaseEnabled(true);
-                  settings.setAllowFileAccess(true);
-                  settings.setAllowContentAccess(true);
-                  settings.setMediaPlaybackRequiresUserGesture(false);
-
-                  webView.setWebChromeClient(new WebChromeClient() {
-
-                      @Override
-                      public void onPermissionRequest(
-                              final PermissionRequest request) {
-
-                          runOnUiThread(() ->
-                                  request.grant(request.getResources())
-                          );
-                      }
-                  });
-
-                  webView.loadUrl(
-                          "file:///android_asset/www/index.html"
-                  );
-              }
-
-              @Override
-              public void onBackPressed() {
-
-                  if (webView.canGoBack()) {
-                      webView.goBack();
-                  } else {
-                      super.onBackPressed();
-                  }
-              }
-          }
-          EOF
-
-
-          # --------------------------------------------------------
-          # Fix Android Manifest
-          # --------------------------------------------------------
-          mkdir -p "$PROJECT_DIR/app/src/main"
-
-          cat > "$PROJECT_DIR/app/src/main/AndroidManifest.xml" <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission
-                  android:name="android.permission.RECORD_AUDIO"/>
-
-              <application
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="Prakash Kirana Stores"
-                  android:icon="@drawable/ic_launcher">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:screenOrientation="portrait"
-                      android:exported="true">
-
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-
-                  </activity>
-
-              </application>
-
-          </manifest>
-          EOF
-
-
-          # --------------------------------------------------------
-          # Fix AppCompat theme
-          # --------------------------------------------------------
-          mkdir -p "$PROJECT_DIR/app/src/main/res/values"
-
-          cat > "$PROJECT_DIR/app/src/main/res/values/styles.xml" <<'EOF'
-          <resources>
-
-              <style name="AppTheme"
-                     parent="@android:style/Theme.Material.Light.NoActionBar">
-
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:colorAccent">#24466F</item>
-                  <item name="android:navigationBarColor">#24466F</item>
-                  <item name="android:statusBarColor">#24466F</item>
-
-              </style>
-
-          </resources>
-          EOF
-
-
-          # --------------------------------------------------------
-          # Check VoiceFix web files
-          # --------------------------------------------------------
-          echo ""
-          echo "========================================"
-          echo "Checking Voice Billing files"
-          echo "========================================"
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/assets/www/index.html" ]; then
-              echo "ERROR: index.html not found"
-              exit 1
-          fi
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/assets/www/app.js" ]; then
-              echo "ERROR: app.js not found"
-              exit 1
-          fi
-
-          echo "index.html FOUND"
-          echo "app.js FOUND"
-
-          echo ""
-          echo "Voice Billing files:"
-          find "$PROJECT_DIR/app/src/main/assets/www" \
-            -maxdepth 2 -type f | sort
-
-          echo ""
-          echo "Android project fixed successfully."
-
-
-      # ============================================================
       # 6. Find Android SDK
-      # ============================================================
       - name: Find Android SDK
         run: |
-
           echo "ANDROID_HOME=$ANDROID_HOME"
 
           find "$ANDROID_HOME" \
             -name sdkmanager \
-            -type f \
-            2>/dev/null || true
+            -type f 2>/dev/null || true
 
-
-      # ============================================================
-      # 7. Prepare Android SDK
-      # ============================================================
+      # 7. Install Android SDK components
       - name: Prepare Android SDK
         run: |
-
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
           if [ ! -f "$SDKMANAGER" ]; then
-              SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-                -name sdkmanager \
-                -type f | head -1)
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+              -name sdkmanager \
+              -type f | head -1)
           fi
 
           if [ -z "$SDKMANAGER" ]; then
-              echo "ERROR: sdkmanager was not found"
-              exit 1
+            echo "ERROR: sdkmanager was not found."
+            exit 1
           fi
 
-          echo "Using sdkmanager:"
-          echo "$SDKMANAGER"
+          echo "Using sdkmanager: $SDKMANAGER"
 
           yes | "$SDKMANAGER" --licenses || true
 
@@ -330,61 +95,33 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-
-      # ============================================================
-      # 8. Set up Gradle
-      # ============================================================
+      # 8. Setup Gradle
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10'
 
-
-      # ============================================================
       # 9. Build APK
-      # ============================================================
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          echo "Building Prakash Kirana Stores APK..."
+          gradle assembleDebug --no-daemon --stacktrace
 
-          echo "========================================"
-          echo "Building Prakash Kirana Stores APK"
-          echo "========================================"
-
-          gradle assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-
-      # ============================================================
       # 10. Check APK
-      # ============================================================
       - name: Check APK
         run: |
-
-          echo "========================================"
-          echo "Checking generated APK"
-          echo "========================================"
+          echo "APK generated:"
 
           find "$PROJECT_DIR/app/build/outputs" \
             -type f \
             -name "*.apk" \
             -exec ls -lh {} \;
 
-          if [ ! -f "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" ]; then
-              echo "ERROR: APK was not generated"
-              exit 1
-          fi
-
-          echo ""
-          echo "APK successfully generated."
-
-
-      # ============================================================
       # 11. Upload APK
-      # ============================================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Prakash-Kirana-Stores-APK
+          name: Prakash-Kirana-Stores-APK-v1.6
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
