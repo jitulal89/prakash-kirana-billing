@@ -22,7 +22,7 @@ jobs:
           rm -rf project
           mkdir project
 
-          unzip -q "PrakashKiranaBilling_V6.zip" -d project
+          unzip -q "PrakashKiranaBilling_V7.zip" -d project
 
           echo "Extracted project:"
           find project -maxdepth 5 -type f | sort
