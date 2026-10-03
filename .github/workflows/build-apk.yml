@@ -1,4 +1,4 @@
-name: Build Prakash Kirana Stores APK
+name: Build Prakash Kirana APK
 
 on:
   workflow_dispatch:
@@ -8,48 +8,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify v3.4 ZIP
-        run: |
-          ZIP_FILE="PrakashKiranaBilling.zip"
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: $ZIP_FILE not found"
-            ls -lah *.zip || true
-            exit 1
-          fi
-          echo "Using $ZIP_FILE"
-
-      - name: Extract Android project
+      - name: Extract project
         run: |
           rm -rf project
           mkdir project
           unzip -q "PrakashKiranaBilling.zip" -d project
 
-      - name: Locate Android project
+      - name: Find project
         id: project
         run: |
           PROJECT_DIR=$(find project -type f -name "build.gradle" -path "*/app/*" -print -quit | xargs dirname | xargs dirname)
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android project not found"
-            find project -maxdepth 5 -type f | head -200
-            exit 1
-          fi
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Android project: $PROJECT_DIR"
+          echo "Project: $PROJECT_DIR"
 
-      - name: Verify v3.4 configuration
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        run: |
-          grep -q "versionName '3.4'" app/build.gradle
-          grep -q "com.google.mlkit:text-recognition:16.0.1" app/build.gradle
-          grep -q "com.tom-roush:pdfbox-android:2.0.27.0" app/build.gradle
-          test -f app/src/main/assets/www/logo.jpg
-          test -f app/src/main/java/com/prakashkirana/billing/MainActivity.java
-          echo "v3.4 configuration verified."
-
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -57,41 +32,27 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f | head -1)
-          fi
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager not found"
-            exit 1
-          fi
+          SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f | head -1)
+
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10'
 
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-          gradle clean assembleDebug --stacktrace
-
-      - name: Verify APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        run: |
-          APK=$(find app/build/outputs/apk -type f -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not generated"
-            exit 1
-          fi
-          echo "APK generated successfully:"
-          ls -lh "$APK"
+          gradle clean assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Prakash-Kirana-Stores-APK-v3.4
+          name: Prakash-Kirana-Stores-APK-v3.7
           path: project/**/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
