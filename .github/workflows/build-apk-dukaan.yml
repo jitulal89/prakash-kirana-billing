@@ -1,85 +1,46 @@
-name: Build DukaanBill APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Extract DukaanBill source
-        run: |
-          rm -rf app-source
-          mkdir app-source
-
-          unzip -q DukaanBill_Complete_Source_v2.zip -d app-source
-
-          echo "===== Project files ====="
-          find app-source -maxdepth 3 -type f
-
-      - name: Find Android project
-        id: project
-        run: |
-          PROJECT_DIR=$(find "$GITHUB_WORKSPACE/app-source" \
-            -name "settings.gradle.kts" \
-            -o -name "settings.gradle" \
-            | head -1 \
-            | xargs dirname)
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android project not found"
-            exit 1
-          fi
-
-          echo "Android project:"
-          echo "$PROJECT_DIR"
-
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-
       - name: Configure Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
 
-          yes | sdkmanager --licenses || true
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f \
+            -name sdkmanager \
+            2>/dev/null | head -1)
 
-          sdkmanager \
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found. Installing Android command line tools..."
+
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+
+            cd /tmp
+
+            wget -q \
+              https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip \
+              -O commandlinetools.zip
+
+            rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+
+            mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+
+            unzip -q commandlinetools.zip \
+              -d "$ANDROID_HOME/cmdline-tools/latest"
+
+            mv "$ANDROID_HOME/cmdline-tools/latest/cmdline-tools/"* \
+              "$ANDROID_HOME/cmdline-tools/latest/"
+
+            rm -rf "$ANDROID_HOME/cmdline-tools/latest/cmdline-tools"
+
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          echo "Using sdkmanager:"
+          "$SDKMANAGER" --version
+
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
-
-      - name: Build DukaanBill
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        run: |
-          gradle clean
-          gradle assembleDebug --stacktrace
-
-      - name: Find APK
-        run: |
-          echo "===== APK FILES ====="
-          find app-source -type f -name "*.apk"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DukaanBill-debug-apk
-          path: app-source/**/build/outputs/apk/**/*.apk
-          if-no-files-found: error
