@@ -1,21 +1,90 @@
-      - name: Configure Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
+name: Build DukaanBill APK
 
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-            -type f \
-            -name sdkmanager \
-            2>/dev/null | head -1)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract DukaanBill source
+        run: |
+          rm -rf app-source
+          mkdir -p app-source
+
+          unzip -q DukaanBill_Complete_Source_v2.zip -d app-source
+
+          echo "===== Extracted files ====="
+          find app-source -maxdepth 3 -type f | sort
+
+      - name: Find Android project
+        id: project
+        shell: bash
+        run: |
+          PROJECT_DIR=$(find "$GITHUB_WORKSPACE/app-source" \
+            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            -print -quit \
+            | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project was not found."
+            echo "Contents of app-source:"
+            find app-source -maxdepth 5 -type f
+            exit 1
+          fi
+
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -e
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          SDKMANAGER=""
+
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+              -type f \
+              -name sdkmanager \
+              2>/dev/null | head -1 || true)
+          fi
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager not found. Installing Android command line tools..."
+            echo "sdkmanager not found. Installing Android command-line tools..."
 
             mkdir -p "$ANDROID_HOME/cmdline-tools"
 
             cd /tmp
 
             wget -q \
-              https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip \
+              "https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip" \
               -O commandlinetools.zip
 
             rm -rf "$ANDROID_HOME/cmdline-tools/latest"
@@ -25,10 +94,12 @@
             unzip -q commandlinetools.zip \
               -d "$ANDROID_HOME/cmdline-tools/latest"
 
-            mv "$ANDROID_HOME/cmdline-tools/latest/cmdline-tools/"* \
+            mv \
+              "$ANDROID_HOME/cmdline-tools/latest/cmdline-tools/"* \
               "$ANDROID_HOME/cmdline-tools/latest/"
 
-            rm -rf "$ANDROID_HOME/cmdline-tools/latest/cmdline-tools"
+            rm -rf \
+              "$ANDROID_HOME/cmdline-tools/latest/cmdline-tools"
 
             SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           fi
@@ -44,3 +115,31 @@
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
+
+      - name: Build DukaanBill
+        working-directory: ${{ steps.project.outputs.project_dir }}
+        shell: bash
+        run: |
+          echo "===== Android project ====="
+          pwd
+          ls -la
+
+          echo "===== Building APK ====="
+          gradle clean
+          gradle assembleDebug --stacktrace
+
+      - name: Find APK
+        shell: bash
+        run: |
+          echo "===== APK FILES ====="
+          find app-source \
+            -type f \
+            -name "*.apk" \
+            -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DukaanBill-debug-apk
+          path: app-source/**/build/outputs/apk/**/*.apk
+          if-no-files-found: error
