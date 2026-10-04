@@ -18,26 +18,27 @@ jobs:
         run: |
           rm -rf app-source
           mkdir app-source
+
           unzip -q DukaanBill_Complete_Source_v2.zip -d app-source
 
-          echo "===== Extracted files ====="
-          find app-source -maxdepth 3 -type f | head -100
+          echo "===== Project files ====="
+          find app-source -maxdepth 3 -type f
 
       - name: Find Android project
         id: project
         run: |
           PROJECT_DIR=$(find "$GITHUB_WORKSPACE/app-source" \
-            -name "settings.gradle" \
-            -o -name "settings.gradle.kts" \
+            -name "settings.gradle.kts" \
+            -o -name "settings.gradle" \
             | head -1 \
             | xargs dirname)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android Gradle project not found"
+            echo "ERROR: Android project not found"
             exit 1
           fi
 
-          echo "Android project found at:"
+          echo "Android project:"
           echo "$PROJECT_DIR"
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
@@ -49,14 +50,14 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Configure Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-          ls -la "$ANDROID_HOME"
-
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
           yes | sdkmanager --licenses || true
 
@@ -65,20 +66,11 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Make Gradle executable
+      - name: Build DukaanBill
         working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-          chmod +x gradlew
-
-      - name: Clean project
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        run: |
-          ./gradlew clean
-
-      - name: Build Debug APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
-        run: |
-          ./gradlew assembleDebug --stacktrace
+          gradle clean
+          gradle assembleDebug --stacktrace
 
       - name: Find APK
         run: |
